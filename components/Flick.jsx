@@ -8,7 +8,7 @@ const Flick = ({index, video, selfie}) => {
     <View style={styles.flick_container}>
       <Text style={styles.text_container}>{index}.</Text>
       <VideoComp video={video}/>
-      <Selfie selfie={selfie}/>
+      <Selfie video={video} selfie={selfie}/>
     </View>
   )
 }

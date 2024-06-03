@@ -1,28 +1,59 @@
 import { StyleSheet, Text, View } from "react-native";
 import React from "react";
 import SaveSVG from "../assets/Save.svg";
-import SavedToGallery from '../assets/Saved_to_gallery.svg'
-import LoadingAnimation from '../assets/Loading_animation.json'
-import { Player} from '@lottiefiles/react-lottie-player';
-import { PermissionsAndroid, Platform } from 'react-native';
+import SavedToGallery from "../assets/Saved_to_gallery.svg";
+import LoadingAnimation from "../assets/Loading_animation.json";
+import { Player } from "@lottiefiles/react-lottie-player";
+import { PermissionsAndroid, Platform } from "react-native";
 import { Image } from "react-native";
 import { TouchableOpacity } from "react-native";
-import RNFetchBlob from 'rn-fetch-blob';
-import CameraRoll from '@react-native-community/cameraroll';
-const Selfie = ({selfie, video}) => {
+import {
+  FFmpegKit,
+  FFmpegKitConfig,
+  ReturnCode,
+} from "ffmpeg-kit-react-native";
+import {
+  documentDirectory,
+  getInfoAsync,
+  makeDirectoryAsync,
+} from "expo-file-system";
+
+const Selfie = ({ selfie, video }) => {
   const [saved, setSaved] = React.useState("not_saved");
-  const handleClick = ()=>{
-    setSaved("saving")
+
+  const getResultPath = async () => {
+    const videoDir = `${documentDirectory}video/`;
+
+    // Checks if gif directory exists. If not, creates it
+    async function ensureDirExists() {
+      const dirInfo = await getInfoAsync(videoDir);
+      if (!dirInfo.exists) {
+        console.log("tmp directory doesn't exist, creating...");
+        await makeDirectoryAsync(videoDir, { intermediates: true });
+      }
+    }
+
+    await ensureDirExists();
+    const date = new Date();
+    return `${videoDir}video_flick_${date.getMilliseconds()}.mp4`;
+  };
+
+  React.useEffect(() => {
+    FFmpegKitConfig.init();
+  }, []);
+
+  const handleClick = () => {
+    setSaved("saving");
     downloadVideo(video);
-  }
+  };
   async function requestStoragePermission() {
-    if (Platform.OS === 'android') {
+    if (Platform.OS === "android") {
       try {
         const granted = await PermissionsAndroid.request(
           PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
           {
-            title: 'Storage Permission Required',
-            message: 'This app needs access to your storage to download videos',
+            title: "Storage Permission Required",
+            message: "This app needs access to your storage to download videos",
           }
         );
         return granted === PermissionsAndroid.RESULTS.GRANTED;
@@ -35,43 +66,31 @@ const Selfie = ({selfie, video}) => {
     }
   }
   async function downloadVideo(videoUrl) {
-    const hasPermission = await requestStoragePermission();
-  
-    if (!hasPermission) {
-      alert('Storage permission denied');
-      return;
+    try {
+      const hasPermission = await requestStoragePermission();
+
+      if (!hasPermission) {
+        alert("Storage permission denied");
+        setSaved("not_saved");
+        return;
+      }
+
+      const resultVideo = await getResultPath();
+      const ffmpegSession = await FFmpegKit.execute(
+        `-i ${videoUrl} -i ${selfie} -filter_complex "overlay=10:10" ${resultVideo}`
+      );
+
+      const result = await ffmpegSession.getReturnCode();
+      if (ReturnCode.isSuccess(result)) {
+        setSaved("saved");
+      } else {
+        setSaved("not_saved");
+        console.error(result);
+      }
+    } catch (error) {
+      console.log(error);
+      setSaved("not_saved");
     }
-  
-    const { config, fs } = RNFetchBlob;
-    const date = new Date();
-    const filePath = `${fs.dirs.DownloadDir}/video_${Math.floor(date.getTime() + date.getSeconds() / 2)}.mp4`;
-  
-    config({
-      fileCache: true,
-      appendExt: 'mp4',
-      path: filePath,
-      addAndroidDownloads: {
-        useDownloadManager: true,
-        notification: true,
-        path: filePath,
-        description: 'Downloading video.',
-      },
-    })
-      .fetch('GET', videoUrl)
-      .then(res => {
-        CameraRoll.save(res.path(), { type: 'video' })
-          .then(() => {
-            setSaved("saved")
-          })
-          .catch(err => {
-            console.error(err);
-            setSaved("not_saved")
-          });
-      })
-      .catch(err => {
-        console.error(err);
-        setSaved("not_saved")
-      });
   }
   return (
     <View style={styles.selfie_container}>
